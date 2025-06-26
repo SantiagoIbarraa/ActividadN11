@@ -77,8 +77,14 @@ $conn->close();
                 </div>
 
                 <div class="flex justify-end mt-4">
-                    <button class="like-button text-xs font-bold py-1 px-3 rounded-full transition-colors <?php echo $button_classes; ?>" data-song-id="<?php echo $song['song_id']; ?>">
-                        <?php echo $button_text; ?>
+                    <button class="like-button p-1 hover:scale-110 transition-transform" data-song-id="<?php echo $song['song_id']; ?>" title="<?php echo $is_liked ? 'Quitar de Me Gusta' : 'Agregar a Me Gusta'; ?>">
+                        <svg class="h-5 w-5 <?php echo $is_liked ? 'text-green-500' : 'text-neutral-500 hover:text-white'; ?>" fill="currentColor" viewBox="0 0 20 20">
+                            <?php if ($is_liked): ?>
+                                <path fill-rule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clip-rule="evenodd"></path>
+                            <?php else: ?>
+                                <path d="M10 3.22l-.61-.63a5.5 5.5 0 00-7.78 7.78l8.39 8.39 8.39-8.39a5.5 5.5 0 00-7.78-7.78l-.61-.63zM10 18.28l-8.39-8.39a4 4 0 010-5.66 4 4 0 015.66 0l.73.73.73-.73a4 4 0 015.66 0 4 4 0 010 5.66L10 18.28z"></path>
+                            <?php endif; ?>
+                        </svg>
                     </button>
                 </div>
             </div>

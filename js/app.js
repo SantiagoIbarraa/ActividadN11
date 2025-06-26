@@ -164,7 +164,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // ---- EVENT LISTENER PRINCIPAL ----
     // ===============================================
     
-    // Un único event listener para manejar todos los clics importantes en el body
+    // Reemplazar completamente el event listener principal
     document.body.addEventListener('click', async (e) => {
         const songCard = e.target.closest('.song-card');
         const playButton = e.target.closest('.play-button');
@@ -186,8 +186,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (mainPlayBtn) {
             e.preventDefault();
             e.stopPropagation();
-            if (currentPlaylist.length > 0) {
+            if (currentPlaylist && currentPlaylist.length > 0) {
                 playSongFromPlaylist(0);
+            } else {
+                console.warn('Main play button clicked but playlist is empty');
+                showNotification('No hay canciones para reproducir', 'error');
             }
             return;
         }
@@ -199,30 +202,48 @@ document.addEventListener('DOMContentLoaded', () => {
             
             console.log('Song card clicked!'); // Debug
             
-            const songData = JSON.parse(songCard.dataset.song);
-            console.log('Song data:', songData); // Debug
-            
-            // CORRECCIÓN: Usar pagePlaylistData si está disponible, o crear playlist con una canción
-            if (typeof window.pagePlaylistData !== 'undefined' && window.pagePlaylistData.length > 0) {
-                currentPlaylist = window.pagePlaylistData.map(normalizeSongData);
+            try {
+                const songData = JSON.parse(songCard.dataset.song);
+                console.log('Song data:', songData); // Debug
                 
-                // Encontrar el índice de la canción clickeada
-                const clickedSongId = songData.song_id || songData.id;
-                currentIndex = currentPlaylist.findIndex(song => 
-                    (song.song_id || song.id) == clickedSongId
-                );
-                
-                if (currentIndex === -1) {
-                    currentIndex = 0; // Fallback al primer elemento
+                // Verificar si hay pagePlaylistData disponible
+                if (typeof window.pagePlaylistData !== 'undefined' && 
+                    Array.isArray(window.pagePlaylistData) && 
+                    window.pagePlaylistData.length > 0) {
+                    
+                    currentPlaylist = window.pagePlaylistData.map(normalizeSongData);
+                    
+                    // Encontrar el índice de la canción clickeada
+                    const clickedSongId = songData.song_id || songData.id;
+                    currentIndex = currentPlaylist.findIndex(song => 
+                        (song.song_id || song.id) == clickedSongId
+                    );
+                    
+                    if (currentIndex === -1) {
+                        console.warn('Song not found in playlist, adding it as first song');
+                        currentPlaylist.unshift(normalizeSongData(songData));
+                        currentIndex = 0;
+                    }
+                } else {
+                    // Crear playlist con solo esta canción
+                    console.log('Creating single-song playlist');
+                    currentPlaylist = [normalizeSongData(songData)];
+                    currentIndex = 0;
                 }
-            } else {
-                // Crear playlist con solo esta canción
-                currentPlaylist = [normalizeSongData(songData)];
-                currentIndex = 0;
+                
+                console.log('Playing from playlist, index:', currentIndex, 'Total songs:', currentPlaylist.length); // Debug
+                
+                // Verificación adicional antes de reproducir
+                if (currentPlaylist.length > 0 && currentIndex >= 0 && currentIndex < currentPlaylist.length) {
+                    playSongFromPlaylist(currentIndex);
+                } else {
+                    console.error('Invalid playlist state before playing');
+                    showNotification('Error al configurar la playlist', 'error');
+                }
+            } catch (error) {
+                console.error('Error parsing song data:', error);
+                showNotification('Error al procesar datos de la canción', 'error');
             }
-            
-            console.log('Playing from playlist, index:', currentIndex); // Debug
-            playSongFromPlaylist(currentIndex);
             return;
         }
 
@@ -251,7 +272,10 @@ document.addEventListener('DOMContentLoaded', () => {
             e.preventDefault();
             e.stopPropagation();
             const songIndex = parseInt(songRow.dataset.songIndex, 10);
-            playSongFromPlaylist(songIndex);
+            if (!isNaN(songIndex)) {
+                console.log('Song row clicked, index:', songIndex); // Debug
+                playSongFromPlaylist(songIndex);
+            }
             return;
         }
     });
@@ -276,8 +300,15 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function playSongFromPlaylist(index) {
+        // Validación más robusta
+        if (!currentPlaylist || currentPlaylist.length === 0) {
+            console.error('Playlist vacía o no inicializada');
+            showNotification('No hay canciones en la playlist', 'error');
+            return;
+        }
+        
         if (index < 0 || index >= currentPlaylist.length) {
-            console.error('Invalid playlist index:', index);
+            console.error('Invalid playlist index:', index, 'Playlist length:', currentPlaylist.length);
             return;
         }
         
@@ -286,6 +317,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         if (!song || !song.file_path) {
             console.error('Canción no válida o sin archivo:', song);
+            showNotification('Archivo de canción no encontrado', 'error');
             return;
         }
         
@@ -299,7 +331,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         playAudio();
     }
-
+    
     function updateCurrentSongVisuals() {
         // Remover clase de canción anterior
         document.querySelectorAll('.song-card.playing').forEach(card => {
@@ -343,15 +375,51 @@ document.addEventListener('DOMContentLoaded', () => {
         loadPageContent(path);
     });
 
+    // Event listener para cuando liked-songs.php dispare el evento de datos listos
+    document.addEventListener('likedSongsDataReady', (e) => {
+        console.log('Received likedSongsDataReady event:', e.detail); // Debug
+        if (e.detail && e.detail.playlistData) {
+            console.log('Initializing playlist from event data:', e.detail.playlistData); // Debug
+            initializePlaylist(e.detail.playlistData);
+        }
+    });
+
     const initializePageScripts = (url) => {
+        console.log('Initializing page scripts for:', url.pathname); // Debug
+        
         if (url.pathname.includes('playlist.php')) {
             const albumId = url.searchParams.get('album_id') || 1;
+            console.log('Loading album playlist for album ID:', albumId); // Debug
             loadAlbumPlaylist(albumId);
         }
-        else if (typeof window.pagePlaylistData !== 'undefined') {
+        else if (typeof window.pagePlaylistData !== 'undefined' && window.pagePlaylistData) {
             console.log('Initializing playlist with data:', window.pagePlaylistData); // Debug
             initializePlaylist(window.pagePlaylistData);
             window.pagePlaylistData = undefined; 
+        } else {
+            console.log('No pagePlaylistData found, currentPlaylist:', currentPlaylist); // Debug
+            
+            // Si estamos en liked-songs.php, esperar a que los datos estén disponibles
+            if (url.pathname.includes('liked-songs.php')) {
+                console.log('Waiting for liked-songs data to be available...'); // Debug
+                let attempts = 0;
+                const checkInterval = setInterval(() => {
+                    attempts++;
+                    console.log(`Polling attempt ${attempts}: pagePlaylistData =`, window.pagePlaylistData); // Debug
+                    
+                    if (typeof window.pagePlaylistData !== 'undefined' && window.pagePlaylistData && window.pagePlaylistData.length > 0) {
+                        clearInterval(checkInterval);
+                        console.log('Liked-songs data found, initializing playlist:', window.pagePlaylistData); // Debug
+                        initializePlaylist(window.pagePlaylistData);
+                        window.pagePlaylistData = undefined;
+                    } else if (attempts >= 50) { // 5 segundos máximo (50 * 100ms)
+                        clearInterval(checkInterval);
+                        console.warn('Timeout waiting for liked-songs data after', attempts, 'attempts');
+                        console.warn('Current state - pagePlaylistData:', window.pagePlaylistData);
+                        console.warn('Current state - currentPlaylist:', currentPlaylist);
+                    }
+                }, 100);
+            }
         }
     };
     
@@ -360,7 +428,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // ======================================================
     
     function initializePlaylist(playlistData) {
-        if (!playlistData || playlistData.length === 0) {
+        console.log('initializePlaylist called with:', playlistData); // Debug
+        
+        if (!playlistData || !Array.isArray(playlistData) || playlistData.length === 0) {
+            console.warn('Playlist data is empty or invalid');
             currentPlaylist = [];
             return;
         }
@@ -371,51 +442,42 @@ document.addEventListener('DOMContentLoaded', () => {
         const mainPlayBtn = document.getElementById('mainPlayBtn');
         if (mainPlayBtn) {
             mainPlayBtn.onclick = () => {
-                if(currentPlaylist.length > 0) playSongFromPlaylist(0);
+                if (currentPlaylist.length > 0) {
+                    console.log('Main play button clicked, playing index 0'); // Debug
+                    playSongFromPlaylist(0);
+                } else {
+                    console.warn('Main play button clicked but playlist is empty');
+                    showNotification('No hay canciones para reproducir', 'error');
+                }
             };
         }
-
+    
         document.querySelectorAll('.song-row').forEach(row => {
             row.addEventListener('click', () => {
                 const songIndex = parseInt(row.dataset.songIndex, 10);
                 if (!isNaN(songIndex)) {
+                    console.log('Song row clicked, index:', songIndex); // Debug
                     playSongFromPlaylist(songIndex);
                 }
             });
         });
     }
-
-    async function loadAlbumPlaylist(albumId) {
-        try {
-            const response = await fetch(`api/get_songs.php?album_id=${albumId}`);
-            const songs = await response.json();
-            
-            const playlistContainer = document.getElementById('playlist-songs');
-            if(playlistContainer) {
-                playlistContainer.innerHTML = ''; // Limpia el contenedor
-                songs.forEach((song, index) => {
-                    const songRow = document.createElement('div');
-                    songRow.className = "song-row grid grid-cols-[16px,minmax(0,2fr),minmax(0,1.5fr),minmax(0,1fr)] items-center gap-x-4 p-2 rounded-md hover:bg-neutral-800 transition duration-150 cursor-pointer";
-                    songRow.dataset.songIndex = index;
-                    songRow.innerHTML = `
-                        <div class="text-right text-neutral-400">${index + 1}</div>
-                        <div class="flex items-center space-x-3">
-                            <img src="${song.cover_path}" alt="${song.song_title}" class="w-10 h-10 rounded-sm">
-                            <div><p class="text-white font-semibold">${song.song_title}</p><p class="text-neutral-400 text-sm">${song.artist_name}</p></div>
-                        </div>
-                        <div class="text-neutral-400 text-sm truncate">${song.album_title}</div>
-                        <div class="text-right text-neutral-400 text-sm">${song.duration}</div>
-                    `;
-                    playlistContainer.appendChild(songRow);
-                });
+    
+    // Mejorar la función togglePlay para manejar playlists vacías
+    function togglePlay() {
+        if (!audio.src) { 
+            if (currentPlaylist && currentPlaylist.length > 0) {
+                console.log('No audio source, playing first song from playlist'); // Debug
+                playSongFromPlaylist(0); 
+            } else {
+                console.warn('No audio source and no playlist available');
+                showNotification('Selecciona una canción para reproducir', 'info');
             }
-            initializePlaylist(songs);
-
-        } catch (error) { 
-            console.error('Error al cargar la playlist del álbum:', error); 
+            return; 
         }
+        if (isPlaying) pauseAudio(); 
+        else playAudio();
     }
-
     function playAudio() {
         audio.play().then(() => { 
             isPlaying = true; 
@@ -433,15 +495,7 @@ document.addEventListener('DOMContentLoaded', () => {
         updatePlayPauseIcons();
     }
     
-    function togglePlay() {
-        if (!audio.src) { 
-            if (currentPlaylist.length > 0) playSongFromPlaylist(0); 
-            return; 
-        }
-        if (isPlaying) pauseAudio(); 
-        else playAudio();
-    }
-
+   
     function updatePlayPauseIcons() {
         const pauseIcon = `<svg class="h-6 w-6" fill="currentColor" viewBox="0 0 20 20"><path d="M5.5 3.5A1.5 1.5 0 0 1 7 5v10a1.5 1.5 0 0 1-3 0V5A1.5 1.5 0 0 1 5.5 3.5zm6.5 0A1.5 1.5 0 0 1 13.5 5v10a1.5 1.5 0 0 1-3 0V5a1.5 1.5 0 0 1 1.5-1.5z"></path></svg>`;
         const playIcon = `<svg class="h-6 w-6" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.025A1 1 0 008 8v4a1 1 0 001.555.975l3.5-2a1 1 0 000-1.95l-3.5-2z" clip-rule="evenodd"></path></svg>`;
@@ -508,6 +562,72 @@ document.addEventListener('DOMContentLoaded', () => {
     audio.addEventListener('volumechange', () => { 
         if(volumeSlider) volumeSlider.value = audio.volume; 
     });
+
+    // Función mejorada para debugging el estado de la playlist
+    function debugPlaylistState() {
+        console.log('=== PLAYLIST DEBUG ===');
+        console.log('currentPlaylist:', currentPlaylist);
+        console.log('currentPlaylist.length:', currentPlaylist ? currentPlaylist.length : 'null/undefined');
+        console.log('currentIndex:', currentIndex);
+        console.log('window.pagePlaylistData:', typeof window.pagePlaylistData !== 'undefined' ? window.pagePlaylistData : 'undefined');
+        console.log('=====================');
+    }
+
+    // Hacer la función de debug disponible globalmente para testing
+    window.debugPlaylistState = debugPlaylistState;
+
+    // Hacer la función disponible globalmente
+    window.initializePlaylist = initializePlaylist;
+    
+    // Hacer toggleLike disponible globalmente
+    window.toggleLike = toggleLike;
+
+    // Mejorar loadAlbumPlaylist para manejar mejor los errores
+    async function loadAlbumPlaylist(albumId) {
+        try {
+            const response = await fetch(`api/get_songs.php?album_id=${albumId}`);
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            const songs = await response.json();
+            
+            if (!Array.isArray(songs) || songs.length === 0) {
+                console.warn('No songs returned from API or invalid format');
+                showNotification('No se encontraron canciones en este álbum', 'error');
+                return;
+            }
+            
+            const playlistContainer = document.getElementById('playlist-songs');
+            if(playlistContainer) {
+                playlistContainer.innerHTML = ''; // Limpia el contenedor
+                songs.forEach((song, index) => {
+                    const songRow = document.createElement('div');
+                    songRow.className = "song-row grid grid-cols-[16px,minmax(0,2fr),minmax(0,1.5fr),minmax(0,1fr)] items-center gap-x-4 p-2 rounded-md hover:bg-neutral-800 transition duration-150 cursor-pointer";
+                    songRow.dataset.songIndex = index;
+                    songRow.innerHTML = `
+                        <div class="text-right text-neutral-400">${index + 1}</div>
+                        <div class="flex items-center space-x-3">
+                            <img src="${song.cover_path}" alt="${song.song_title}" class="w-10 h-10 rounded-sm">
+                            <div><p class="text-white font-semibold">${song.song_title}</p><p class="text-neutral-400 text-sm">${song.artist_name}</p></div>
+                        </div>
+                        <div class="text-neutral-400 text-sm truncate">${song.album_title}</div>
+                        <div class="text-right text-neutral-400 text-sm">${song.duration}</div>
+                    `;
+                    playlistContainer.appendChild(songRow);
+                });
+            }
+            
+            // Asegurar que la playlist se inicializa correctamente
+            console.log('Initializing album playlist with', songs.length, 'songs'); // Debug
+            initializePlaylist(songs);
+
+        } catch (error) { 
+            console.error('Error al cargar la playlist del álbum:', error);
+            showNotification('Error al cargar las canciones del álbum', 'error');
+        }
+    }
 
     // ---- INICIALIZACIÓN ----
     loadPageContent('home.php');

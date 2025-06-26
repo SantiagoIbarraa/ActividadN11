@@ -1,3 +1,52 @@
+<?php include 'includes/header.php'; ?>
+
+<!-- Estilos específicos para esta página -->
+<style>
+/* Prevenir que el texto se desborde o se agrande en hover */
+.song-row .text-white.font-semibold,
+.song-row .text-neutral-400 {
+    transition: color 0.2s ease-in-out;
+    /* Evitar cambios de tamaño */
+    font-size: inherit;
+    line-height: inherit;
+}
+
+/* Asegurar que los contenedores mantengan su tamaño */
+.song-row div {
+    overflow: hidden;
+}
+
+/* Mejorar el truncado de texto */
+.song-row .truncate {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+}
+
+/* Estilos para la canción que se está reproduciendo actualmente */
+.song-row.playing {
+    background-color: rgba(39, 39, 42, 0.8) !important;
+}
+
+.song-row.playing .text-white.font-semibold {
+    color: #22c55e !important; /* text-green-500 */
+}
+
+/* Mejorar la visibilidad del botón de play en hover */
+.song-row:hover .play-button {
+    transform: scale(1.05);
+    transition: transform 0.2s ease-in-out;
+}
+
+/* Evitar que el contenedor padre cambie de altura */
+.song-row {
+    min-height: 56px; /* Altura fija para evitar saltos */
+    display: grid;
+    align-items: center;
+}
+</style>
+
 <?php
 // Este archivo es un fragmento de contenido para mostrar las canciones con "Me Gusta"
 require 'api/db_connect.php';
@@ -31,8 +80,6 @@ if ($user_id > 0) {
 }
 $conn->close();
 ?>
-
-<?php include 'includes/header.php'; ?>
 
 <div class="flex-1 overflow-y-auto">
     <!-- Header de la playlist -->
@@ -85,18 +132,37 @@ $conn->close();
             <div id="playlist-songs" class="space-y-1 mt-2">
                 <?php if (!empty($liked_songs)): ?>
                     <?php foreach ($liked_songs as $index => $song): ?>
+                        <?php 
+                            // Estructurar datos con nombres consistentes para JavaScript
+                            $song_data_for_js = [
+                                'song_id' => $song['song_id'],
+                                'id' => $song['song_id'],
+                                'song_title' => $song['song_title'],
+                                'title' => $song['song_title'],
+                                'artist_name' => $song['artist_name'],
+                                'artist' => $song['artist_name'],
+                                'album_title' => $song['album_title'],
+                                'album' => $song['album_title'],
+                                'file_path' => $song['file_path'],
+                                'duration' => $song['duration'],
+                                'cover_path' => $song['cover_path']
+                            ];
+                        ?>
                         <div class="song-row grid grid-cols-[16px,minmax(0,2fr),minmax(0,1.5fr),32px,minmax(0,1fr)] items-center gap-x-4 p-2 rounded-md hover:bg-neutral-800 transition duration-150 cursor-pointer group" 
                              data-song-index="<?php echo $index; ?>"
-                             data-song-id="<?php echo $song['song_id']; ?>">
+                             data-song-id="<?php echo $song['song_id']; ?>"
+                             data-song='<?php echo htmlspecialchars(json_encode($song_data_for_js), ENT_QUOTES, 'UTF-8'); ?>'>
                             
                             <!-- Número/Indicador de reproducción -->
-                            <div class="text-right text-neutral-400 group-hover:hidden">
+                            <div class="text-right text-neutral-400 group-hover:hidden song-number">
                                 <?php echo $index + 1; ?>
                             </div>
-                            <div class="text-right hidden group-hover:block">
-                                <svg class="h-4 w-4 text-white ml-auto" fill="currentColor" viewBox="0 0 20 20">
-                                    <path d="M8.5,7.6L12.5,10L8.5,12.4V7.6z"/>
-                                </svg>
+                            <div class="flex justify-center items-center hidden group-hover:flex">
+                                <button class="play-button bg-green-500 rounded-full flex items-center justify-center shadow-xl cursor-pointer h-8 w-8">
+                                    <svg class="h-5 w-5 text-black" fill="currentColor" viewBox="0 0 20 20">
+                                        <path d="M8.5,7.6L12.5,10L8.5,12.4V7.6z M10,0.5C4.7,0.5,0.5,4.7,0.5,10c0,5.3,4.2,9.5,9.5,9.5s9.5-4.2,9.5-9.5C19.5,4.7,15.3,0.5,10,0.5z"/>
+                                    </svg>
+                                </button>
                             </div>
                             
                             <!-- Información de la canción -->
@@ -104,18 +170,18 @@ $conn->close();
                                 <img src="<?php echo htmlspecialchars($song['cover_path']); ?>" 
                                      alt="Cover" 
                                      class="w-10 h-10 rounded-sm">
-                                <div>
-                                    <p class="text-white font-semibold hover:underline cursor-pointer">
+                                <div class="min-w-0 flex-1">
+                                    <p class="text-white font-semibold cursor-pointer truncate">
                                         <?php echo htmlspecialchars($song['song_title']); ?>
                                     </p>
-                                    <p class="text-neutral-400 text-sm hover:text-white cursor-pointer">
+                                    <p class="text-neutral-400 text-sm cursor-pointer truncate">
                                         <?php echo htmlspecialchars($song['artist_name']); ?>
                                     </p>
                                 </div>
                             </div>
                             
                             <!-- Álbum -->
-                            <div class="text-neutral-400 text-sm truncate hover:text-white cursor-pointer">
+                            <div class="text-neutral-400 text-sm truncate cursor-pointer">
                                 <?php echo htmlspecialchars($song['album_title']); ?>
                             </div>
                             
@@ -156,7 +222,8 @@ $conn->close();
 
 <?php if (!empty($liked_songs)): ?>
 <script>
-document.addEventListener('DOMContentLoaded', function() {
+// Función para inicializar la playlist cuando esté disponible
+function initializeLikedSongsPlaylist() {
     // Preparar datos de la playlist para JavaScript
     const playlistData = <?php echo json_encode($liked_songs); ?>;
     
@@ -174,11 +241,49 @@ document.addEventListener('DOMContentLoaded', function() {
         cover_path: song.cover_path
     }));
     
-    // Asignar a la variable global que usa app.js
-    window.pagePlaylistData = normalizedPlaylistData;
+    console.log('Liked songs data prepared:', normalizedPlaylistData);
     
-    console.log('Liked songs playlist loaded:', normalizedPlaylistData);
+    // Intentar inicializar la playlist directamente
+    if (typeof window.initializePlaylist === 'function') {
+        window.initializePlaylist(normalizedPlaylistData);
+        console.log('Playlist initialized directly with', normalizedPlaylistData.length, 'songs');
+        return true;
+    } else {
+        // Fallback: asignar a la variable global que usa app.js
+        window.pagePlaylistData = normalizedPlaylistData;
+        console.log('Playlist data assigned to window.pagePlaylistData:', normalizedPlaylistData);
+        
+        // Disparar evento personalizado para notificar que los datos están listos
+        const event = new CustomEvent('likedSongsDataReady', { 
+            detail: { playlistData: normalizedPlaylistData } 
+        });
+        document.dispatchEvent(event);
+        
+        return false;
+    }
+}
+
+// Intentar inicializar inmediatamente
+let initialized = initializeLikedSongsPlaylist();
+
+// Si no se pudo inicializar, esperar a que app.js esté disponible
+if (!initialized) {
+    // Polling para esperar a que app.js cargue
+    const checkInterval = setInterval(() => {
+        if (typeof window.initializePlaylist === 'function') {
+            clearInterval(checkInterval);
+            initializeLikedSongsPlaylist();
+        }
+    }, 100);
     
+    // Timeout de seguridad después de 5 segundos
+    setTimeout(() => {
+        clearInterval(checkInterval);
+        console.warn('Timeout waiting for app.js to load');
+    }, 5000);
+}
+
+document.addEventListener('DOMContentLoaded', function() {
     // Manejar botones de "me gusta" con efectos visuales mejorados
     const likeButtons = document.querySelectorAll('.like-button');
     
@@ -245,7 +350,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const songRows = document.querySelectorAll('.song-row');
         songRows.forEach((row, index) => {
             // Actualizar el número visual
-            const numberCell = row.querySelector('.text-right.text-neutral-400');
+            const numberCell = row.querySelector('.song-number');
             if (numberCell) {
                 numberCell.textContent = index + 1;
             }
@@ -260,6 +365,11 @@ document.addEventListener('DOMContentLoaded', function() {
         // Remover highlight anterior
         document.querySelectorAll('.song-row').forEach(row => {
             row.classList.remove('bg-neutral-700', 'text-green-500');
+            const titleElement = row.querySelector('.text-white.font-semibold');
+            if (titleElement) {
+                titleElement.classList.remove('text-green-500');
+                titleElement.classList.add('text-white');
+            }
         });
         
         // Agregar highlight a la canción actual
@@ -268,6 +378,7 @@ document.addEventListener('DOMContentLoaded', function() {
             currentRow.classList.add('bg-neutral-700');
             const titleElement = currentRow.querySelector('.text-white.font-semibold');
             if (titleElement) {
+                titleElement.classList.remove('text-white');
                 titleElement.classList.add('text-green-500');
             }
         }
